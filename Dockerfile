@@ -1,7 +1,6 @@
-# استخدام نسخة كاملة ومستقرة من بايثون
 FROM python:3.9
 
-# تحديث بسيط وتثبيت المحرك الأساسي
+# تثبيت محرك الـ PDF
 RUN apt-get update && apt-get install -y \
     wkhtmltopdf \
     && apt-get clean
@@ -9,8 +8,8 @@ RUN apt-get update && apt-get install -y \
 WORKDIR /app
 COPY . .
 
-# تثبيت المكتبات من الملف الجديد الذي أنشأته
+# تثبيت المكتبات
 RUN pip install --no-cache-dir -r requirements.txt
 
-# أمر تشغيل الملف الأساسي
+# تشغيل البوت
 CMD ["python", "Bot.py"]
