@@ -1,16 +1,16 @@
-FROM python:3.9-slim
+FROM python:3.9
 
-# تثبيت المحركات اللازمة مع حل مشكلة التحديث
-RUN apt-get update --fix-missing && apt-get install -y \
+# تحديث النظام وتثبيت المحرك الأساسي للـ PDF
+RUN apt-get update && apt-get install -y \
     wkhtmltopdf \
+    xvfb \
     && apt-get clean
 
 WORKDIR /app
 COPY . .
 
-# تثبيت المكتبات
+# تثبيت مكتبات البايثون
 RUN pip install --no-cache-dir -r requirements.txt
 
-# أمر التشغيل
+# أمر تشغيل البوت
 CMD ["python", "Bot.py"]
-
