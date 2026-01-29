@@ -1,12 +1,12 @@
-# استخدام نسخة جاهزة تحتوي على كل شيء (بايثون + محرك PDF)
+# هذه النسخة تحتوي على wkhtmltopdf جاهزاً ومثبتاً
 FROM surgit/python3.9-wkhtmltopdf:latest
 
 WORKDIR /app
 
-# نسخ الملفات
+# نسخ ملفات البوت
 COPY . .
 
-# تثبيت مكتبات البايثون فقط
+# تثبيت مكتبات البايثون
 RUN pip install --no-cache-dir -r requirements.txt
 
 # تشغيل البوت
