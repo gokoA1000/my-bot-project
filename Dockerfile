@@ -1,11 +1,12 @@
-FROM python:3.9
-
-# تثبيت محرك الـ PDF
-RUN apt-get update && apt-get install -y \
-    wkhtmltopdf \
-    && apt-get clean
+FROM python:3.9-slim
 
 WORKDIR /app
+
+# تثبيت الأدوات الأساسية فقط
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    && apt-get clean
+
 COPY . .
 
 # تثبيت المكتبات
