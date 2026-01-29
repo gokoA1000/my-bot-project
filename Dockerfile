@@ -1,15 +1,12 @@
-FROM python:3.9-slim
+# استخدام نسخة جاهزة تحتوي على كل شيء (بايثون + محرك PDF)
+FROM surgit/python3.9-wkhtmltopdf:latest
 
 WORKDIR /app
 
-# تثبيت الأدوات الأساسية فقط
-RUN apt-get update && apt-get install -y \
-    build-essential \
-    && apt-get clean
-
+# نسخ الملفات
 COPY . .
 
-# تثبيت المكتبات
+# تثبيت مكتبات البايثون فقط
 RUN pip install --no-cache-dir -r requirements.txt
 
 # تشغيل البوت
