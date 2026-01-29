@@ -1,5 +1,5 @@
 python-telegram-bot
-xhtml2pdf
+pdfkit
 python-docx
 pandas
 openpyxl
