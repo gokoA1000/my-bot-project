@@ -7,3 +7,7 @@ beautifulsoup4
 requests
 lxml
 cloudscraper
+Pillow
+fpdf
+markdownify
+ 
