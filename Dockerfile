@@ -1,16 +1,23 @@
-# نستخدم نسخة رسمية وخفيفة ومستقرة
+# استخدام نسخة مستقرة من بايثون
 FROM python:3.9-slim-bullseye
 
-# أمر التثبيت القوي (يتجاوز أخطاء الشبكة)
+# تثبيت أدوات النظام الضرورية ومحول PDF
 RUN apt-get update --allow-releaseinfo-change && \
-    apt-get install -y --fix-missing wkhtmltopdf && \
-    apt-get clean && \
+    apt-get install -y --no-install-recommends \
+    wkhtmltopdf \
+    build-essential \
+    libssl-dev \
+    libffi-dev \
+    python3-dev \
+    && apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
+
+# نسخ الملفات
 COPY . .
 
-# تثبيت المكتبات
+# تثبيت مكتبات بايثون
 RUN pip install --no-cache-dir -r requirements.txt
 
 # تشغيل البوت
