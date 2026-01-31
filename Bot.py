@@ -1,109 +1,147 @@
 import logging
 import os
-import pdfkit
-import pandas as pd
 import requests
+import pdfkit
 import cloudscraper
+from telegram import Update, ReplyKeyboardMarkup
+from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 from bs4 import BeautifulSoup
 from docx import Document
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import Application, CommandHandler, MessageHandler, CallbackQueryHandler, filters, ContextTypes
+from PIL import Image
+from fpdf import FPDF
+from markdownify import markdownify as md
 
-# إعداد السجلات لمتابعة أداء البوت
+# إعداد السجلات
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 
-# سحب التوكن من إعدادات البيئة (Environment Variable) للأمان
-TOKEN = os.getenv('BOT_TOKEN')
+TOKEN = os.getenv("BOT_TOKEN")
+
+# لوحة المفاتيح الجديدة
+keyboard = [['PDF', 'Word'], ['Text', 'Markdown']]
+reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+
+user_data = {}
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
-        "🚀 مرحباً بك في بوت تحويل الروابط!\n\n"
-        "أرسل لي أي رابط (حتى لو كان من Scribd) وسأحاول تحويله لك."
+        "👋 مرحباً! البوت يعمل بنجاح.\n\n"
+        "1️⃣ أرسل **رابط موقع** ثم اختر الصيغة (PDF, Word, Markdown..).\n"
+        "2️⃣ أرسل **صورة** أو **ملف نصي** وسأحوله لـ PDF.",
+        reply_markup=reply_markup
     )
 
-async def handle_url(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    url = update.message.text
-    if not url.startswith('http'):
-        await update.message.reply_text("❌ يرجى إرسال رابط صحيح.")
-        return
+async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """معالجة الملفات والصور"""
+    attachment = update.message.effective_attachment
+    # التعامل مع الصور أو المستندات
+    file_obj = await attachment[-1].get_file() if isinstance(attachment, list) else await attachment.get_file()
+    
+    file_path = "input_file"
+    await file_obj.download_to_drive(file_path)
 
-    context.user_data['url'] = url
-    
-    keyboard = [
-        [InlineKeyboardButton("PDF 📄", callback_data='pdf'), InlineKeyboardButton("Word 📝", callback_data='word')],
-        [InlineKeyboardButton("Excel 📊", callback_data='excel'), InlineKeyboardButton("Text 📖", callback_data='text')]
-    ]
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    await update.message.reply_text('اختر الصيغة المطلوبة للتحويل:', reply_markup=reply_markup)
-
-async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-    
-    choice = query.data
-    url = context.user_data.get('url')
-    
-    await query.edit_message_text(f"⏳ جاري معالجة الرابط وتحويله إلى {choice.upper()}...")
-    
     try:
-        file_path = await process_conversion(url, choice)
-        if file_path and os.path.exists(file_path):
-            with open(file_path, 'rb') as document:
-                await query.message.reply_document(document=document, caption=f"✅ تم التحويل إلى {choice}")
-            os.remove(file_path)
-        else:
-            await query.message.reply_text("⚠️ عذراً، لم أستطع استخراج محتوى مناسب لهذا النوع.")
-            
+        # محاولة 1: هل هو صورة؟
+        try:
+            image = Image.open(file_path)
+            if image.mode != 'RGB':
+                image = image.convert('RGB')
+            image.save("output.pdf", "PDF", resolution=100.0)
+            await update.message.reply_document(document=open("output.pdf", 'rb'), filename="image.pdf")
+            os.remove("output.pdf")
+            return
+        except:
+            pass # ليس صورة، ننتقل للتالي
+
+        # محاولة 2: هل هو ملف نصي؟
+        with open(file_path, "r", encoding="utf-8") as f:
+            text_content = f.read()
+        
+        pdf = FPDF()
+        pdf.add_page()
+        pdf.set_font("Arial", size=12)
+        for line in text_content.split('\n'):
+            safe_line = line.encode('latin-1', 'replace').decode('latin-1')
+            pdf.cell(200, 10, txt=safe_line, ln=True)
+        
+        pdf.output("output.pdf")
+        await update.message.reply_document(document=open("output.pdf", 'rb'), filename="text.pdf")
+        os.remove("output.pdf")
+
     except Exception as e:
-        await query.message.reply_text(f"❌ حدث خطأ: {str(e)}")
-
-async def process_conversion(url, format_type):
-    # استخدام cloudscraper لتجاوز حماية المواقع مثل Scribd
-    scraper = cloudscraper.create_scraper()
-    response = scraper.get(url)
-    response.encoding = 'utf-8'
-    soup = BeautifulSoup(response.content, 'html.parser')
+        await update.message.reply_text(f"❌ لم أستطع تحويل هذا الملف.\nالخطأ: {str(e)}")
     
-    filename = f"converted_file.{format_type}"
+    finally:
+        if os.path.exists(file_path):
+            os.remove(file_path)
 
-    if format_type == 'pdf':
-        # إعدادات خاصة لعمل pdfkit على السيرفرات
-        options = {'quiet': '', 'encoding': "UTF-8"}
-        pdfkit.from_url(url, filename, options=options)
-        return filename
+async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    text = update.message.text
+    chat_id = update.message.chat_id
 
-    elif format_type == 'word':
-        doc = Document()
-        doc.add_heading(soup.title.string if soup.title else "Web Content", 0)
-        for p in soup.find_all(['p', 'h1', 'h2']):
-            doc.add_paragraph(p.get_text())
-        doc.save(filename)
-        return filename
+    # استقبال الرابط
+    if text.startswith('http'):
+        user_data[chat_id] = text
+        await update.message.reply_text(f"🔗 تم الحفظ: {text}\nاختر الصيغة 👇", reply_markup=reply_markup)
+    
+    # تنفيذ التحويل
+    elif text in ['PDF', 'Word', 'Text', 'Markdown']:
+        url = user_data.get(chat_id)
+        if not url:
+            await update.message.reply_text("⚠️ أرسل الرابط أولاً.")
+            return
 
-    elif format_type == 'excel':
-        tables = pd.read_html(url)
-        if not tables: return None
-        tables[0].to_excel(filename)
-        return filename
+        await update.message.reply_text(f"⏳ جاري التحويل إلى {text}...")
 
-    elif format_type == 'text':
-        with open(filename, "w", encoding="utf-8") as f:
-            f.write(soup.get_text(separator='\n'))
-        return filename
+        try:
+            scraper = cloudscraper.create_scraper()
+            response = scraper.get(url)
+            
+            if response.status_code != 200:
+                await update.message.reply_text("❌ الموقع لا يستجيب.")
+                return
 
-    return None
+            if text == 'PDF':
+                path_wkhtmltopdf = '/usr/bin/wkhtmltopdf'
+                config = pdfkit.configuration(wkhtmltopdf=path_wkhtmltopdf)
+                options = {'enable-local-file-access': None}
+                pdfkit.from_url(url, 'output.pdf', configuration=config, options=options)
+                await update.message.reply_document(document=open('output.pdf', 'rb'), filename="web.pdf")
+                os.remove('output.pdf')
+
+            elif text == 'Word':
+                soup = BeautifulSoup(response.text, 'lxml')
+                doc = Document()
+                doc.add_heading(url, 0)
+                for p in soup.find_all('p'):
+                    if p.text.strip():
+                        doc.add_paragraph(p.text.strip())
+                doc.save('output.docx')
+                await update.message.reply_document(document=open('output.docx', 'rb'), filename="web.docx")
+                os.remove('output.docx')
+
+            elif text == 'Text':
+                soup = BeautifulSoup(response.text, 'lxml')
+                text_content = soup.get_text(separator='\n\n', strip=True)
+                with open('output.txt', 'w', encoding='utf-8') as f:
+                    f.write(text_content)
+                await update.message.reply_document(document=open('output.txt', 'rb'), filename="web.txt")
+                os.remove('output.txt')
+
+            elif text == 'Markdown':
+                md_text = md(response.text)
+                with open('output.md', 'w', encoding='utf-8') as f:
+                    f.write(md_text)
+                await update.message.reply_document(document=open('output.md', 'rb'), filename="web.md")
+                os.remove('output.md')
+
+        except Exception as e:
+            await update.message.reply_text(f"❌ حدث خطأ: {str(e)}")
 
 def main():
-    if not TOKEN:
-        print("❌ خطأ: لم يتم العثور على BOT_TOKEN في إعدادات السيرفر!")
-        return
-
     app = Application.builder().token(TOKEN).build()
     app.add_handler(CommandHandler("start", start))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_url))
-    app.add_handler(CallbackQueryHandler(button_callback))
-    
-    print("🚀 البوت يعمل الآن على Render...")
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+    app.add_handler(MessageHandler(filters.PHOTO | filters.Document.ALL, handle_document))
     app.run_polling()
 
 if __name__ == '__main__':
